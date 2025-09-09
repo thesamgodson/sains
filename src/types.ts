@@ -8,6 +8,7 @@ export interface UserProfile {
   avoidBrands: string[];
   valueBias: ValueBias;
   budgetBand: 'low' | 'mid' | 'high';
+  allergyProfile?: string[]; // e.g., ['nuts', 'dairy']
 }
 
 export interface PromoMeta {
@@ -27,12 +28,14 @@ export interface Product {
   price: number;
   dietTags: DietTag[];
   categories: string[];
+  tags?: string[];
   promo?: PromoMeta;
   missionTags?: string[]; // e.g., 'pasta_night', 'roast_dinner'
   perishableDays?: number; // approximate days until expiry for demo
+  nectarPointsBonus?: number; // demo points bonus if purchased
 }
 
-export type NudgeType = 'complement' | 'multibuy' | 'substitute' | 'mission' | 'tradeup' | 'stockup' | 'holdoff';
+export type NudgeType = 'complement' | 'multibuy' | 'substitute' | 'mission' | 'tradeup' | 'stockup' | 'holdoff' | 'store' | 'nectar_points';
 
 export interface BasketItem {
   sku: string;
@@ -59,6 +62,8 @@ export interface SessionContext {
   scans: ScanEvent[];
   nudgeHistory: string[]; // candidate ids served
   lastNudgeScanIndex?: number;
+  storeId?: string;
+  timeOfDay?: string; // HH:MM
 }
 
 

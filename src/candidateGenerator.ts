@@ -18,11 +18,16 @@ export class CandidateGenerator {
     candidates.push(...this.generateMission(session.basket, profile));
     candidates.push(...this.generateHoldOff(session.basket, profile));
     candidates.push(...this.generateStockUp(session.basket, profile));
+    candidates.push(...this.generateStoreSpecific(session, profile));
+    candidates.push(...this.generateNectarPoints(session, profile));
     return candidates;
   }
 
   private dietaryOk(product: Product, profile: UserProfile): boolean {
-    return profile.dietTags.every(tag => product.dietTags.includes(tag)) && !profile.avoidBrands.includes(product.brand);
+    const dietOk = profile.dietTags.every(tag => product.dietTags.includes(tag));
+    const brandOk = !profile.avoidBrands.includes(product.brand);
+    const allergyOk = (profile.allergyProfile || []).every(a => !(product.tags || []).includes(a));
+    return dietOk && brandOk && allergyOk;
   }
 
   private generateComplement(sku: string, profile: UserProfile): NudgeCandidate[] {
@@ -92,6 +97,19 @@ export class CandidateGenerator {
     return candidates;
   }
 
+  // Store/time-based suggestions (simple demo rule)
+  private generateStoreSpecific(session: SessionContext, profile: UserProfile): NudgeCandidate[] {
+    if (!session.timeOfDay) return [];
+    const hour = Number(session.timeOfDay.split(':')[0] || 0);
+    // morning: breakfast complements
+    if (hour >= 7 && hour <= 10) {
+      const items: Product[] = [];
+      ['cereal-500g','milk-1l','orange-juice-1l'].forEach(s => { if (Catalog[s]) items.push(Catalog[s]); });
+      if (items.length) return [{ id: nanoid(), type: 'store', title: 'Morning specials', reason: 'Breakfast picks for now', products: items.slice(0, 3), savings: 0 }];
+    }
+    return [];
+  }
+
   private generateTradeUp(sku: string, profile: UserProfile): NudgeCandidate[] {
     const base = Catalog[sku];
     if (!base) return [];
@@ -115,6 +133,17 @@ export class CandidateGenerator {
       candidates.push({ id: nanoid(), type: 'stockup', title: 'Stock up and save', reason: 'Bigger pack for the week', products: [bulk], savings: 0 });
     }
     return candidates;
+  }
+
+  private generateNectarPoints(session: SessionContext, profile: UserProfile): NudgeCandidate[] {
+    if (!(profile.valueBias === 'value' || profile.valueBias === 'balanced')) return [];
+    const basketSkus = new Set(session.basket.map(b => b.sku));
+    const options = Object.values(Catalog).filter(p => (p.nectarPointsBonus || 0) > 0 && !basketSkus.has(p.sku));
+    if (options.length === 0) return [];
+    // choose highest points
+    const best = options.sort((a, b) => (b.nectarPointsBonus || 0) - (a.nectarPointsBonus || 0))[0];
+    if (!this.dietaryOk(best, profile)) return [];
+    return [{ id: nanoid(), type: 'nectar_points', title: 'Earn bonus Nectar points', reason: `Get ${best.nectarPointsBonus} extra points`, products: [best], savings: 0 }];
   }
 
   // Hold-off nudge: if user is adding more short-shelf-life items and basket already has enough

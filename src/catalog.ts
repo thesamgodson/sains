@@ -20,8 +20,11 @@ export const Catalog: Record<string, Product> = Object.fromEntries(
       price: p.price,
       dietTags: (p.diet || []) as any,
       categories: [p.category.toLowerCase(), p.subCategory.toLowerCase()],
+      tags: (p.tags || []) as any,
       promo,
-      missionTags: []
+      missionTags: [],
+      perishableDays: (p as any).perishableDays,
+      nectarPointsBonus: (p as any).nectarPointsBonus
     };
     return [sku, product];
   })
