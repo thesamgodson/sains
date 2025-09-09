@@ -9,12 +9,13 @@ export class CandidateGenerator {
   generateCandidates(session: SessionContext, profile: UserProfile): NudgeCandidate[] {
     const lastScan = session.scans[session.scans.length - 1];
     const candidates: NudgeCandidate[] = [];
+    const basketSkus = new Set(session.basket.map(b => b.sku));
     if (lastScan) {
-      candidates.push(...this.generateComplement(lastScan.sku, profile));
-      candidates.push(...this.generateSubstitute(lastScan.sku, profile));
-      candidates.push(...this.generateTradeUp(lastScan.sku, profile));
+      candidates.push(...this.generateComplement(lastScan.sku, profile, basketSkus));
+      candidates.push(...this.generateSubstitute(lastScan.sku, profile, basketSkus));
+      candidates.push(...this.generateTradeUp(lastScan.sku, profile, basketSkus));
     }
-    candidates.push(...this.generateMultibuy(session.basket));
+    candidates.push(...this.generateMultibuy(session.basket, lastScan?.sku));
     candidates.push(...this.generateMission(session.basket, profile));
     candidates.push(...this.generateHoldOff(session.basket, profile));
     candidates.push(...this.generateStockUp(session.basket, profile));
@@ -30,28 +31,34 @@ export class CandidateGenerator {
     return dietOk && brandOk && allergyOk;
   }
 
-  private generateComplement(sku: string, profile: UserProfile): NudgeCandidate[] {
+  private generateComplement(sku: string, profile: UserProfile, basketSkus: Set<string>): NudgeCandidate[] {
     const complementSkus = Complements[sku] || [];
-    const products = complementSkus.map(s => Catalog[s]).filter(Boolean).filter(p => this.dietaryOk(p, profile));
+    const products = complementSkus
+      .map(s => Catalog[s])
+      .filter(Boolean)
+      .filter(p => !basketSkus.has(p.sku))
+      .filter(p => this.dietaryOk(p, profile));
     if (products.length === 0) return [];
-    const title = 'Complete your meal';
-    const reason = 'Goes well with what you just scanned';
+    const title = 'Perfect pairing 🍝';
+    const reason = 'Add the missing piece to complete your meal.';
     const savings = products.reduce((acc, p) => acc + (p.promo?.type === 'nectar' && p.promo.nectarPrice ? p.price - p.promo.nectarPrice : 0), 0);
     return [{ id: nanoid(), type: 'complement', title, reason, products, savings }];
   }
 
-  private generateMultibuy(basket: BasketItem[]): NudgeCandidate[] {
+  private generateMultibuy(basket: BasketItem[], lastScanSku?: string): NudgeCandidate[] {
     const oneAway = this.basketAnalyzer.computeMultibuySavingsIfOneAway(basket);
     const candidates: NudgeCandidate[] = [];
     for (const g of oneAway) {
-      // find a representative product from the group to suggest
-      const product = Object.values(Catalog).find(p => p.promo?.groupId === g.groupId);
+      // Prefer last scanned if in group, else the cheapest in the group
+      const groupProducts = Object.values(Catalog).filter(p => p.promo?.groupId === g.groupId);
+      let product: Product | undefined = groupProducts.find(p => p.sku === lastScanSku);
+      if (!product) product = groupProducts.sort((a, b) => a.price - b.price)[0];
       if (!product) continue;
       candidates.push({
         id: nanoid(),
         type: 'multibuy',
-        title: 'You\'re one away from a multibuy',
-        reason: `Add 1 more to save £${g.potentialSaving.toFixed(2)}`,
+        title: 'Almost there 🎯',
+        reason: `Add 1 more to unlock £${g.potentialSaving.toFixed(2)} savings.`,
         products: [product],
         savings: g.potentialSaving
       });
@@ -59,10 +66,12 @@ export class CandidateGenerator {
     return candidates;
   }
 
-  private generateSubstitute(sku: string, profile: UserProfile): NudgeCandidate[] {
+  private generateSubstitute(sku: string, profile: UserProfile, basketSkus: Set<string>): NudgeCandidate[] {
     const product = Catalog[sku];
     if (!product) return [];
-    const substitutes = Object.values(Catalog).filter(p => p.categories.some(c => product.categories.includes(c)) && p.sku !== product.sku);
+    // Substitute only within the same sub-category (avoid broad 'food' overlap)
+    const baseSubcategory = product.categories[1];
+    const substitutes = Object.values(Catalog).filter(p => p.sku !== product.sku && p.categories[1] === baseSubcategory && !basketSkus.has(p.sku));
     const options: Product[] = [];
     for (const s of substitutes) {
       if (!this.dietaryOk(s, profile)) continue;
@@ -78,7 +87,7 @@ export class CandidateGenerator {
     if (options.length === 0) return [];
     const best = options.sort((a, b) => (a.promo?.nectarPrice ?? a.price) - (b.promo?.nectarPrice ?? b.price))[0];
     const saving = Math.max(0, product.price - (best.promo?.nectarPrice ?? best.price));
-    return [{ id: nanoid(), type: 'substitute', title: 'Better value available', reason: 'Swap to save', products: [best], savings: saving }];
+    return [{ id: nanoid(), type: 'substitute', title: 'Smart swap 💡', reason: 'Switch to save without compromise.', products: [best], savings: saving }];
   }
 
   private generateMission(basket: BasketItem[], profile: UserProfile): NudgeCandidate[] {
@@ -91,7 +100,7 @@ export class CandidateGenerator {
         .filter(p => this.dietaryOk(p, profile));
       if (missing.length > 0 && missing.length < skus.length) {
         const savings = missing.reduce((acc, p) => acc + (p.promo?.type === 'nectar' && p.promo.nectarPrice ? p.price - p.promo.nectarPrice : 0), 0);
-        candidates.push({ id: nanoid(), type: 'mission', title: 'Finish your recipe', reason: `Complete ${mission.replace('_', ' ')}` , products: missing.slice(0, 3), savings });
+        candidates.push({ id: nanoid(), type: 'mission', title: 'Finish your recipe 🍽️', reason: `Complete ${mission.replace('_', ' ')} with these picks.` , products: missing.slice(0, 3), savings });
       }
     }
     return candidates;
@@ -105,21 +114,21 @@ export class CandidateGenerator {
     if (hour >= 7 && hour <= 10) {
       const items: Product[] = [];
       ['cereal-500g','milk-1l','orange-juice-1l'].forEach(s => { if (Catalog[s]) items.push(Catalog[s]); });
-      if (items.length) return [{ id: nanoid(), type: 'store', title: 'Morning specials', reason: 'Breakfast picks for now', products: items.slice(0, 3), savings: 0 }];
+      if (items.length) return [{ id: nanoid(), type: 'store', title: 'Morning picks ☕', reason: 'Fuel up with these breakfast favorites.', products: items.slice(0, 3), savings: 0 }];
     }
     return [];
   }
 
-  private generateTradeUp(sku: string, profile: UserProfile): NudgeCandidate[] {
+  private generateTradeUp(sku: string, profile: UserProfile, basketSkus: Set<string>): NudgeCandidate[] {
     const base = Catalog[sku];
     if (!base) return [];
     // premium alternative in same category
-    const premium = Object.values(Catalog).filter(p => p.categories.some(c => base.categories.includes(c)) && p.price > base.price && p.brand.includes('Taste the Difference'));
+    const premium = Object.values(Catalog).filter(p => p.categories.some(c => base.categories.includes(c)) && p.price > base.price && p.brand.includes('Taste the Difference') && !basketSkus.has(p.sku));
     if (premium.length === 0) return [];
     const best = premium.sort((a, b) => b.price - a.price)[0];
     if (!this.dietaryOk(best, profile)) return [];
-    const title = 'Upgrade for your occasion';
-    const reason = `Try premium ${best.name}`;
+    const title = 'Treat yourself ✨';
+    const reason = `Upgrade to ${best.name} for a little extra delight.`;
     return [{ id: nanoid(), type: 'tradeup', title, reason, products: [best], savings: 0 }];
   }
 
@@ -130,7 +139,7 @@ export class CandidateGenerator {
     // Simple rule: if tissue 9-roll in basket, suggest 12-roll bulk
     if (items.has('toilet-tissue-9-roll') && Catalog['toilet-tissue-12-roll']) {
       const bulk = Catalog['toilet-tissue-12-roll'];
-      candidates.push({ id: nanoid(), type: 'stockup', title: 'Stock up and save', reason: 'Bigger pack for the week', products: [bulk], savings: 0 });
+      candidates.push({ id: nanoid(), type: 'stockup', title: 'Stock up 📦', reason: 'Bigger pack, fewer trips.', products: [bulk], savings: 0 });
     }
     return candidates;
   }
@@ -143,7 +152,7 @@ export class CandidateGenerator {
     // choose highest points
     const best = options.sort((a, b) => (b.nectarPointsBonus || 0) - (a.nectarPointsBonus || 0))[0];
     if (!this.dietaryOk(best, profile)) return [];
-    return [{ id: nanoid(), type: 'nectar_points', title: 'Earn bonus Nectar points', reason: `Get ${best.nectarPointsBonus} extra points`, products: [best], savings: 0 }];
+    return [{ id: nanoid(), type: 'nectar_points', title: `${best.nectarPointsBonus} Nectar points await! 🟣`, reason: `Add ${best.name} to your basket.`, products: [best], savings: 0 }];
   }
 
   // Hold-off nudge: if user is adding more short-shelf-life items and basket already has enough
@@ -156,7 +165,7 @@ export class CandidateGenerator {
     const soonExpiring = perishables.some(p => (p.product.perishableDays || 99) <= 3);
     if (totalPerishables >= 3 && soonExpiring) {
       const prods = perishables.slice(0, 2).map(p => p.product);
-      return [{ id: nanoid(), type: 'holdoff', title: 'Heads up: perishables may expire', reason: 'Avoid overbuying items that expire soon', products: prods, savings: 0 }];
+      return [{ id: nanoid(), type: 'holdoff', title: 'Quick heads up ⚠️', reason: 'You have items expiring soon—avoid overbuying.', products: prods, savings: 0 }];
     }
     return [];
   }

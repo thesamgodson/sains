@@ -62,6 +62,7 @@ export interface SessionContext {
   scans: ScanEvent[];
   nudgeHistory: string[]; // candidate ids served
   lastNudgeScanIndex?: number;
+  lastNudgeType?: NudgeType;
   storeId?: string;
   timeOfDay?: string; // HH:MM
 }

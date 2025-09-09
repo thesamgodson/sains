@@ -40,6 +40,8 @@ body { margin: 0; background: var(--bg); color: var(--brand-navy); font-family: 
   border-radius: 12px;
   padding: 16px;
   box-shadow: var(--shadow);
+  max-height: 460px;
+  overflow: auto;
 }
 
 .nudge-activity {
@@ -166,5 +168,13 @@ body { margin: 0; background: var(--bg); color: var(--brand-navy); font-family: 
 .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
 .status-online { background:#16a34a; }
 .status-offline { background:#ef4444; }
+
+/* Pretty switches */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; vertical-align: middle; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; inset: 0; background: #e5e7eb; transition: .2s; border-radius: 999px; }
+.slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; top: 3px; background: white; transition: .2s; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.switch input:checked + .slider { background: var(--brand-orange); }
+.switch input:checked + .slider:before { transform: translateX(20px); }
 
 

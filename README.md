@@ -58,6 +58,59 @@ npm run dev
 - Throttling: <=1 nudge per 3 scans and no repeated candidate IDs per session.
 - Dietary/brand avoidance respected in candidate generation.
 
+## How to Test Each Nudge (UI)
+- Complement (pairs well)
+  - Scan: "Sainsbury’s Penne Pasta 500g" (`pasta-500g`)
+  - Expect: Tomato & Basil Sauce complement
+- Multi-buy (one-away)
+  - Scan: `falafel-200g`
+  - Scan two other items to clear throttle; then scan: `houmous-200g`
+  - Expect: deli-pair multibuy nudge
+- Substitute (value swap)
+  - Profile value/balanced (default balanced)
+  - Scan: `premium-pasta-400g`
+  - Expect: cheaper swap (e.g., `pasta-500g`)
+- Mission (complete)
+  - Scan: `whole-chicken-1kg`, then `potatoes-2kg`
+  - Expect: `carrots-1kg` or `gravy-granules-200g`
+- Trade-up (occasion)
+  - Scan a standard pasta; throttle-aware, trade-up may appear to Taste the Difference
+- Stock-up (bulk)
+  - Scan: `toilet-tissue-9-roll`
+  - Expect: suggest `toilet-tissue-12-roll`
+- Hold-off (perishables)
+  - Add ≥3 perishables: `milk-1l`, `strawberries-400g`, `yogurt-500g`
+  - Expect: "Heads up: perishables may expire"
+- Store/Time-based (morning picks)
+  - Set session time: in `src/demo.ts`, set `session.timeOfDay = '08:30'`
+  - Expect: "Morning specials" (cereal/milk/juice)
+- Nectar Points (value-oriented)
+  - Value/balanced profile
+  - Expect: "Cornflakes 500g" with 50 bonus points
+
+The left "Nudge Activity" panel shows the type, title, and reason for each nudge.
+
+## API Checks (Agentic Re‑ranker)
+Start the server (CORS enabled for `http://localhost:5173`):
+```bash
+npm run server
+```
+Start the UI in another terminal:
+```bash
+npm run dev
+```
+Header badge should show "Agentic: Gemini Re‑ranker" with a green dot when reachable.
+
+Quick POST test (PowerShell):
+```powershell
+Invoke-RestMethod -Uri http://localhost:8787/rerank -Method Post -Body (@{ candidates = @(); profile = @{ id='u'; dietTags=@('vegetarian'); avoidBrands=@(); valueBias='balanced'; budgetBand='mid' } } | ConvertTo-Json -Depth 6) -ContentType 'application/json'
+```
+
+Troubleshooting:
+- Dot is red: ensure server is running; hard-refresh UI.
+- CORS blocked: server already whitelists `http://localhost:5173`; restart server.
+- No nudge after scan: throttling allows max 1 per 3 scans; vary items.
+
 ## Extended Nudge Types (Framework)
 Implemented in this demo:
 - Complement: suggests items that pair with the scan

@@ -11,12 +11,21 @@ export class NudgeEngine {
   processScan(session: SessionContext, profile: UserProfile, event: ScanEvent): NudgeCandidate | null {
     session.scans.push(event);
     const candidates = this.generator.generateCandidates(session, profile);
-    const ranked = this.ranker.rank(candidates, profile);
+    let ranked = this.ranker.rank(candidates, profile);
+    // Simple rotation: deprioritize same-type as the last nudge
+    if (session.lastNudgeType) {
+      ranked = ranked.sort((a, b) => {
+        const apen = a.type === session.lastNudgeType ? -1 : 0;
+        const bpen = b.type === session.lastNudgeType ? -1 : 0;
+        return (b.score ?? 0) + bpen - ((a.score ?? 0) + apen);
+      });
+    }
     if (!this.throttle.canServeNudge(session)) return null;
     for (const c of ranked) {
       if (!this.throttle.hasSeenCandidate(session, c.id)) {
         session.nudgeHistory.push(c.id);
         session.lastNudgeScanIndex = session.scans.length;
+        session.lastNudgeType = c.type;
         return c;
       }
     }

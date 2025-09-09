@@ -18,12 +18,16 @@ export class NudgeRanker {
     if (c.type === 'mission') score += 2;
     if (c.type === 'tradeup') score += 2;
     if (c.type === 'stockup') score += 1;
-    if (c.type === 'nectar_points') score += (profile.valueBias === 'value' ? 4 : 2);
+    if (c.type === 'nectar_points') score += 1; // keep modest so it doesn't dominate
 
     // Savings and points weight
     score += Math.min(10, c.savings * 2);
     const points = c.type === 'nectar_points' ? (c.products[0]?.nectarPointsBonus || 0) : 0;
-    if (points) score += Math.min(10, points / 10 * (profile.valueBias === 'value' ? 1.5 : 1));
+    if (points) {
+      // cap the points influence so it can't outweigh core relevance types
+      const scaler = profile.valueBias === 'value' ? 0.6 : 0.4;
+      score += Math.min(4, (points / 50) * 2 * scaler);
+    }
 
     // Value bias alignment
     if (profile.valueBias === 'value' && (c.type === 'substitute' || c.type === 'multibuy')) score += 3;
